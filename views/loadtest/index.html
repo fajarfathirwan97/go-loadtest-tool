@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Loadtest Tool</title>
+</head>
+<body>
+<table>
+    <tr>
+        <td>Target Domain</td>
+        <td>:</td>
+        <td><input id="domain" type="text" value="https://jsonplaceholder.typicode.com"
+                   placeholder="e.g. https://google.com"></td>
+    </tr>
+    <tr>
+        <td>Initial Req/s</td>
+        <td>:</td>
+        <td><input id="initial" type="text" placeholder="10"></td>
+    </tr>
+    <tr>
+        <td>Arival Req/s after finished</td>
+        <td>:</td>
+        <td><input id="rps" type="text" placeholder="2"></td>
+    </tr>
+    <tr>
+        <td>Payloads</td>
+        <td>:</td>
+        <td><textarea id="payload" style="width: 300px">
+                    {
+  "requests": [
+    {
+      "endpoint": "/posts",
+      "method": "GET",
+      "headers": {
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Authorization": "Bearer xyz"
+      }
+    }
+  ]
+}
+
+                </textarea></td>
+    </tr>
+    <tr>
+        <td colspan=""><input onclick="startLoadTest()" type="button" value="Start"></td>
+        <td colspan=""></td>
+        <td colspan=""><input onclick="stopLoadTest()" type="button" value="Stop"></td>
+    </tr>
+</table>
+
+<div style="width: 1000px;display: flex">
+    <div style="flex: 1">
+        <canvas id="loadTestChart"></canvas>
+    </div>
+    <div style="flex: 1">
+        <canvas id="elapsedTimeChart"></canvas>
+    </div>
+
+</div>
+
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    let labels = [];
+    let success = [];
+    let failure = [];
+    let rps = [];
+    let fastests = [];
+    let slowests = [];
+
+    let elapsedTimeData = {
+        labels: labels,
+        datasets: [
+            {
+                label: 'Fastest (s)',
+                backgroundColor: 'rgb(99,169,255)',
+                borderColor: 'rgb(99,169,255)',
+                data: fastests,
+            },
+            {
+                label: 'Slowest (s)',
+                backgroundColor: 'rgb(255,99,154)',
+                borderColor: 'rgb(255,99,154)',
+                data: slowests,
+            },
+        ]
+    }
+    let data = {
+        labels: labels,
+        datasets: [
+            {
+                label: 'Success',
+                backgroundColor: 'rgb(99,255,125)',
+                borderColor: 'rgb(99,255,102)',
+                data: success,
+            },
+            {
+                label: 'Failure',
+                backgroundColor: 'rgb(224,0,48)',
+                borderColor: 'rgb(224,0,48)',
+                data: failure,
+            },
+            {
+                label: 'Req/s',
+                backgroundColor: 'rgb(99,182,255)',
+                borderColor: 'rgb(99,182,255)',
+                data: rps,
+            }
+        ]
+    };
+    const config = {
+        elapsedTimeChart: {
+            type: 'line',
+            data: elapsedTimeData,
+        },
+        requestChart: {
+            type: 'line',
+            data,
+        },
+    }
+
+
+    const chart = new Chart(
+        document.getElementById('loadTestChart'),
+        config.requestChart
+    );
+
+    const elapsedTimeChart = new Chart(
+        document.getElementById('elapsedTimeChart'),
+        config.elapsedTimeChart,
+    )
+</script>
+
+<script>
+    let ws;
+
+    function startLoadTest() {
+        const domain = document.getElementById('domain').value
+        const initial = document.getElementById('initial').value || 2
+        const increment = document.getElementById('rps').value || 2
+        const payload = JSON.parse(document.getElementById('payload').value)
+        const config = btoa(JSON.stringify({
+            domain,
+            initial: Number(initial),
+            increment: Number(increment),
+            payload
+        }))
+        ws = new WebSocket('ws://localhost:5000/ws?config=' + config)
+        ws.onopen = function (event) {
+            ws.send(JSON.stringify({"type": "start-loadtest"}))
+        }
+        ws.onmessage = function (ev) {
+            const data = JSON.parse(ev.data)
+            const availableType = {
+                "loadtest-info": onLoadtestInfo,
+                "loadtest-started": onLoadtestStarted,
+                "loadtest-stopped": onLoadtestStopped,
+            }
+            availableType[data.message](data)
+        }
+    }
+
+    function stopLoadTest() {
+        if (ws != null)
+            ws.send(JSON.stringify({"type": "stop-loadtest"}))
+    }
+
+    function onLoadtestInfo(data) {
+        success.push(data.success_count)
+        rps.push(data.rps)
+        failure.push(data.failure_count)
+        const d = new Date()
+        const datetext = d.toTimeString().split(' ')[0]
+        labels.push(datetext)
+        fastests.push(data.fastest_time)
+        slowests.push(data.slowest_time)
+        chart.update()
+        elapsedTimeChart.update()
+    }
+
+    function onLoadtestStarted(data) {
+
+    }
+
+    function onLoadtestStopped(data) {
+
+    }
+</script>
+</body>
+</html>
